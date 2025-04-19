@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: iot-backend
+    env: node
+    buildCommand: npm install
+    startCommand: node src/server.js
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MQTT_BROKER_URL
+        value: mqtt://test.mosquitto.org:1883
+      - key: MQTT_USERNAME
+        value: admin
+      - key: MQTT_PASSWORD
+        value: public 
