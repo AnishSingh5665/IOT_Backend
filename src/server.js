@@ -41,7 +41,10 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV}`);
-    console.log(`MQTT Broker: ${process.env.MQTT_BROKER_URL}`);
+    
+    // Initialize MQTT connection after server starts
+    console.log('Initializing MQTT connection...');
+    mqttService.connect();
 });
 
 // Handle unhandled promise rejections

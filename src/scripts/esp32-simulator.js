@@ -1,42 +1,40 @@
 const mqtt = require('mqtt');
 
-// MQTT client options
-const options = {
-    host: 'localhost',
-    port: 1883,
-    protocol: 'mqtt',
-    username: process.env.MQTT_USERNAME,
-    password: process.env.MQTT_PASSWORD,
-    clientId: 'esp32_simulator'
-};
+// MQTT Configuration
+const brokerUrl = 'ws://mqtt.eclipseprojects.io:80/mqtt';
+const topic = 'iot/devices/esp32_01/data';
 
-// Create client
-const client = mqtt.connect(options);
+console.log('Starting ESP32 Simulator...');
+console.log('Connecting to broker:', brokerUrl);
 
-// Simulated sensor readings
-function getRandomValue(min, max) {
-    return (Math.random() * (max - min) + min).toFixed(2);
-}
+// Create MQTT client
+const client = mqtt.connect(brokerUrl, {
+    clientId: `esp32_simulator_${Date.now()}`,
+    clean: true,
+    connectTimeout: 4000,
+    reconnectPeriod: 1000
+});
 
 // Handle connection
 client.on('connect', () => {
-    console.log('ESP32 Simulator connected to MQTT broker');
-    
-    // Simulate sensor readings every 5 seconds
+    console.log('✅ Connected to MQTT broker');
+    console.log('Starting to publish sensor data...');
+
+    // Start publishing data every 5 seconds
     setInterval(() => {
         const data = {
             deviceId: 'esp32_01',
             timestamp: new Date().toISOString(),
-            temperature: parseFloat(getRandomValue(20, 30)),
-            vibration: parseFloat(getRandomValue(0, 0.1)),
-            current: parseFloat(getRandomValue(1, 2))
+            temperature: parseFloat((Math.random() * 10 + 20).toFixed(1)), // Random temp between 20-30
+            vibration: parseFloat((Math.random() * 0.1).toFixed(2)),      // Random vibration between 0-0.1
+            current: parseFloat((Math.random() * 2 + 1).toFixed(1))       // Random current between 1-3
         };
-        
-        client.publish('iot/devices/esp32_01/data', JSON.stringify(data), (err) => {
+
+        client.publish(topic, JSON.stringify(data), { qos: 1 }, (err) => {
             if (err) {
-                console.error('Publish error:', err);
+                console.error('Error publishing:', err);
             } else {
-                console.log('Published sensor data:', data);
+                console.log('Published:', JSON.stringify(data, null, 2));
             }
         });
     }, 5000);
@@ -44,11 +42,20 @@ client.on('connect', () => {
 
 // Handle errors
 client.on('error', (error) => {
-    console.error('MQTT Error:', error);
+    console.error('❌ MQTT Error:', error.message);
 });
 
-// Handle process termination
-process.on('SIGINT', () => {
-    client.end();
-    process.exit();
+// Handle connection close
+client.on('close', () => {
+    console.log('Connection closed');
+});
+
+// Handle offline
+client.on('offline', () => {
+    console.log('Client is offline');
+});
+
+// Handle reconnect
+client.on('reconnect', () => {
+    console.log('Attempting to reconnect...');
 }); 

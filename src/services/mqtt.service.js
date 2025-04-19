@@ -1,95 +1,135 @@
 const mqtt = require('mqtt');
 const DeviceData = require('../models/deviceData.model');
+const config = require('../config/config');
 
 class MQTTService {
     constructor() {
         this.client = null;
-        this.connect();
+        this.isConnected = false;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
+        this.reconnectDelay = 3000;
     }
 
     connect() {
-        // Connect to MQTT broker
-        this.client = mqtt.connect(process.env.MQTT_BROKER_URL, {
-            username: process.env.MQTT_USERNAME,
-            password: process.env.MQTT_PASSWORD,
-            clientId: `nodejs_server_${Date.now()}`,
-            clean: true
-        });
+        console.log('Connecting to MQTT broker:', config.mqtt.brokerUrl);
+        
+        try {
+            this.client = mqtt.connect(config.mqtt.brokerUrl, config.mqtt.options);
 
-        // Handle connection events
-        this.client.on('connect', () => {
-            console.log('Connected to MQTT broker');
-            this.subscribeToTopics();
-        });
+            this.client.on('connect', () => {
+                console.log('✅ MQTT Connected to broker');
+                this.isConnected = true;
+                this.reconnectAttempts = 0;
+                this.subscribeToTopics();
+            });
 
-        this.client.on('error', (error) => {
-            console.error('MQTT Error:', error);
-        });
+            this.client.on('error', (error) => {
+                console.error('❌ MQTT Error:', error.message);
+                this.handleReconnect();
+            });
 
-        this.client.on('close', () => {
-            console.log('MQTT Connection closed');
-            // Attempt to reconnect after 5 seconds
-            setTimeout(() => this.connect(), 5000);
-        });
+            this.client.on('close', () => {
+                console.log('MQTT Connection closed');
+                this.isConnected = false;
+                this.handleReconnect();
+            });
 
-        // Handle incoming messages
-        this.client.on('message', this.handleMessage.bind(this));
+            this.client.on('message', this.handleMessage.bind(this));
+
+            this.client.on('offline', () => {
+                console.log('MQTT Client is offline');
+                this.isConnected = false;
+            });
+
+            this.client.on('reconnect', () => {
+                console.log('Attempting to reconnect...');
+            });
+
+        } catch (error) {
+            console.error('Failed to create MQTT client:', error);
+            this.handleReconnect();
+        }
+    }
+
+    handleReconnect() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.reconnectAttempts++;
+            console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
+            
+            if (this.client) {
+                this.client.end();
+                this.client = null;
+            }
+            
+            setTimeout(() => {
+                if (!this.isConnected) {
+                    this.connect();
+                }
+            }, this.reconnectDelay);
+        } else {
+            console.error('Max reconnection attempts reached. Please check your network connection.');
+            setTimeout(() => {
+                this.reconnectAttempts = 0;
+                this.connect();
+            }, 30000);
+        }
     }
 
     subscribeToTopics() {
-        // Subscribe to all device data topics
-        this.client.subscribe('iot/devices/+/data', (err) => {
-            if (err) {
-                console.error('Error subscribing to topics:', err);
-            } else {
-                console.log('Subscribed to iot/devices/+/data');
-            }
-        });
+        if (this.isConnected) {
+            const topic = 'iot/devices/+/data';
+            this.client.subscribe(topic, { qos: 1 }, (err) => {
+                if (err) {
+                    console.error('Error subscribing to topics:', err);
+                } else {
+                    console.log(`Subscribed to topic: ${topic} with QoS 1`);
+                }
+            });
+        }
     }
 
     async handleMessage(topic, message) {
         try {
             const data = JSON.parse(message.toString());
-            
+            console.log('Received data:', JSON.stringify(data, null, 2));
+
             // Validate required fields
-            if (!data.deviceId || !data.temperature || !data.vibration || !data.current) {
-                console.error('Invalid data format:', data);
+            if (!data.deviceId || !data.timestamp || !data.temperature || !data.vibration || !data.current) {
+                console.error('Invalid data format. Missing required fields:', data);
                 return;
             }
 
-            // Create new device data record
             const deviceData = new DeviceData({
                 deviceId: data.deviceId,
-                timestamp: data.timestamp || new Date(),
+                timestamp: new Date(data.timestamp),
                 temperature: data.temperature,
                 vibration: data.vibration,
                 current: data.current
             });
 
-            // Save to database
             await deviceData.save();
-            console.log(`Saved data from device ${data.deviceId}`);
+            console.log('Data saved to MongoDB');
 
-            // Emit data through Socket.IO if needed
             if (global.io) {
-                global.io.emit(`device:${data.deviceId}`, data);
+                global.io.to(`device:${data.deviceId}`).emit('device:data', data);
             }
-
         } catch (error) {
-            console.error('Error processing MQTT message:', error);
+            console.error('Error processing message:', error);
         }
     }
 
     publish(topic, message) {
-        if (this.client && this.client.connected) {
-            this.client.publish(topic, JSON.stringify(message));
+        if (this.isConnected) {
+            this.client.publish(topic, JSON.stringify(message), { qos: 1 }, (err) => {
+                if (err) {
+                    console.error('Error publishing message:', err);
+                }
+            });
         } else {
-            console.error('MQTT client not connected');
+            console.error('Cannot publish: MQTT client not connected');
         }
     }
 }
 
-// Create singleton instance
-const mqttService = new MQTTService();
-
-module.exports = mqttService; 
+module.exports = new MQTTService(); 

@@ -13,8 +13,12 @@ services:
         value: production
       - key: PORT
         value: 10000
-      - key: MQTT_BROKER_URL
-        value: mqtt://broker.hivemq.com:1883
+      - key: MQTT_BROKER_HOST
+        value: test.mosquitto.org
+      - key: MQTT_BROKER_PORT
+        value: 8080
+      - key: MQTT_PROTOCOL
+        value: ws
       - key: MQTT_USERNAME
         value: ''
       - key: MQTT_PASSWORD
