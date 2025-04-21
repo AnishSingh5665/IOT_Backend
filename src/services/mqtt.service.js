@@ -94,25 +94,45 @@ class MQTTService {
             const data = JSON.parse(message.toString());
             console.log('Received data:', JSON.stringify(data, null, 2));
 
-            // Validate required fields
-            if (!data.deviceId || !data.timestamp || !data.temperature || !data.vibration || !data.current) {
-                console.error('Invalid data format. Missing required fields:', data);
-                return;
-            }
+            // Extract deviceId from topic
+            const deviceId = topic.split('/')[2];
 
+            // Create device data object
             const deviceData = new DeviceData({
-                deviceId: data.deviceId,
-                timestamp: new Date(data.timestamp),
+                deviceId,
+                timestamp: new Date(data.time),
+                voltage: data.voltage,
                 temperature: data.temperature,
                 vibration: data.vibration,
-                current: data.current
+                singalPCurrent: data.singalPCurrent,
+                AphaseCurrent: data.AphaseCurrent,
+                BphaseCurrent: data.BphaseCurrent,
+                CphaseCurrent: data.CphaseCurrent,
+                AgpioState: data.AgpioState,
+                BgpioState: data.BgpioState,
+                CgpioState: data.CgpioState,
+                generalGpio: data.generalGpio,
+                rs485DataCount: data.rs485DataCount,
+                rs485Data: data.rs485Data
             });
 
+            // Save data to MongoDB
             await deviceData.save();
             console.log('Data saved to MongoDB');
 
+            // Send acknowledgment to device
+            const ackTopic = `iot/devices/${deviceId}/ack`;
+            this.client.publish(ackTopic, 'OK', { qos: 1 }, (err) => {
+                if (err) {
+                    console.error('Error sending acknowledgment:', err);
+                } else {
+                    console.log('Acknowledgment sent to device:', deviceId);
+                }
+            });
+
+            // Emit real-time data through Socket.IO if available
             if (global.io) {
-                global.io.to(`device:${data.deviceId}`).emit('device:data', data);
+                global.io.to(`device:${deviceId}`).emit('device:data', deviceData);
             }
         } catch (error) {
             console.error('Error processing message:', error);

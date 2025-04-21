@@ -16,7 +16,8 @@ exports.getDeviceData = async (req, res) => {
 
         const data = await DeviceData.find(query)
             .sort({ timestamp: -1 })
-            .limit(parseInt(limit));
+            .limit(parseInt(limit))
+            .select('timestamp voltage temperature vibration singalPCurrent AphaseCurrent BphaseCurrent CphaseCurrent AgpioState BgpioState CgpioState generalGpio rs485DataCount rs485Data');
 
         res.json({
             success: true,
@@ -36,7 +37,15 @@ exports.getLatestDeviceData = async (req, res) => {
         const { deviceId } = req.params;
 
         const data = await DeviceData.findOne({ deviceId })
-            .sort({ timestamp: -1 });
+            .sort({ timestamp: -1 })
+            .select('timestamp voltage temperature vibration singalPCurrent AphaseCurrent BphaseCurrent CphaseCurrent AgpioState BgpioState CgpioState generalGpio rs485DataCount rs485Data');
+
+        if (!data) {
+            return res.status(404).json({
+                success: false,
+                message: 'No data found for device'
+            });
+        }
 
         res.json({
             success: true,
