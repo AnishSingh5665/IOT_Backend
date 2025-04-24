@@ -1,11 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const deviceController = require('../controllers/device.controller');
+const { verifyToken } = require('../middleware/auth.middleware');
 
-// Get device data with optional date range and limit
-router.get('/devices/:deviceId/data', deviceController.getDeviceData);
+// Apply authentication middleware to all device routes
+router.use(verifyToken);
 
-// Get latest data for a device
-router.get('/devices/:deviceId/latest', deviceController.getLatestDeviceData);
+// Create a new device
+router.post('/', deviceController.createDevice);
+
+// Get all devices for the authenticated user
+router.get('/', deviceController.getDevices);
+
+// Get a specific device by ID
+router.get('/:id', deviceController.getDevice);
+
+// Update a device
+router.put('/:id', deviceController.updateDevice);
+
+// Delete a device
+router.delete('/:id', deviceController.deleteDevice);
 
 module.exports = router; 

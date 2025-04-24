@@ -1,16 +1,28 @@
 require('dotenv').config();
 
+// Log environment variables (for debugging)
+console.log('Supabase URL:', process.env.SUPABASE_URL);
+console.log('Supabase Anon Key:', process.env.SUPABASE_ANON_KEY ? 'Present' : 'Missing');
+console.log('Supabase Service Role Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Present' : 'Missing');
+
 module.exports = {
     // Server Configuration
     port: process.env.PORT || 5000,
     nodeEnv: process.env.NODE_ENV || 'development',
-    clientUrl: process.env.CLIENT_URL || '*',
+    clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
 
     // MongoDB Configuration
     mongodbUri: process.env.MONGODB_URI,
 
+    // Supabase Configuration
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+    supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+
     // JWT Configuration
-    jwtSecret: process.env.JWT_SECRET,
+    jwtSecret: process.env.JWT_SECRET || 'your-default-jwt-secret',
+    accessTokenExpiry: '15m',
+    refreshTokenExpiry: '7d',
 
     // MQTT Configuration
     mqtt: {
@@ -27,5 +39,8 @@ module.exports = {
             protocolVersion: 4,
             resubscribe: true
         }
-    }
+    },
+
+    // CORS Configuration
+    corsOrigin: process.env.CORS_ORIGIN || '*'
 }; 
