@@ -13,7 +13,7 @@ router.post('/', deviceController.createDevice);
 router.get('/', deviceController.getDevices);
 
 // Get a specific device by ID
-router.get('/:id', deviceController.getDevice);
+router.get('/:id', deviceController.getDeviceById);
 
 // Update a device
 router.put('/:id', deviceController.updateDevice);
