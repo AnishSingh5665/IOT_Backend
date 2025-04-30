@@ -2,11 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const config = require('./config/config');
-const apiRoutes = require('./routes/api.routes');
 const authRoutes = require('./routes/auth.routes');
 const deviceRoutes = require('./routes/device.routes');
 const deviceDataRoutes = require('./routes/devicedata.routes');
 const realtimeDataRoutes = require('./routes/realtimeData.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 const morgan = require('morgan');
 const deviceMonitorService = require('./services/deviceMonitor.service');
 
@@ -27,11 +27,11 @@ mongoose.connect(config.mongodbUri)
     .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
-app.use('/api', apiRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api', deviceDataRoutes);
 app.use('/api/realtime', realtimeDataRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

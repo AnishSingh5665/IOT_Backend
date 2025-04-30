@@ -163,8 +163,8 @@ exports.getProfile = async (req, res) => {
             });
         }
 
-        // Get the user's profile data
-        const { data: userData, error } = await supabaseService.client
+        // Get the user's profile data using admin client to bypass RLS
+        const { data: userData, error } = await supabaseService.adminClient
             .from('users')
             .select('*')
             .eq('id', req.user.id)
@@ -172,6 +172,13 @@ exports.getProfile = async (req, res) => {
 
         if (error) {
             console.error('Error fetching profile:', error);
+            return res.status(404).json({
+                success: false,
+                message: 'User profile not found'
+            });
+        }
+
+        if (!userData) {
             return res.status(404).json({
                 success: false,
                 message: 'User profile not found'
