@@ -35,5 +35,7 @@ router.post('/logout', authMiddleware.verifyToken, authController.logout);
 
 // Protected routes
 router.get('/profile', authMiddleware.verifyToken, authController.getProfile);
+router.put('/edit', authMiddleware.verifyToken, authController.editUser);
+router.delete('/delete', authMiddleware.verifyToken, authController.deleteUser);
 
 module.exports = router; 

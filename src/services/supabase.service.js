@@ -128,20 +128,55 @@ class SupabaseService {
     }
 
     // Sign up user
-    async signUp(email, password) {
+    async signUp(email, password, name) {
         console.log('Attempting to sign up user:', email);
         try {
-            // Hash the password
-            const hashedPassword = await bcrypt.hash(password, 10);
+            // First check if user exists in auth
+            try {
+                const { data: authUser } = await this.adminClient.auth.admin.listUsers({
+                    email: email
+                });
 
-            // First create the user in auth
+                if (authUser && authUser.users && authUser.users.length > 0) {
+                    // If user exists in auth, try to delete them
+                    try {
+                        await this.adminClient.auth.admin.deleteUser(authUser.users[0].id);
+                        console.log('Deleted existing auth user');
+                    } catch (deleteError) {
+                        console.error('Error deleting existing auth user:', deleteError);
+                        return { 
+                            data: null, 
+                            error: new Error('This email is already registered. Please use a different email or try logging in.') 
+                        };
+                    }
+                }
+            } catch (authError) {
+                console.log('No existing auth user found, proceeding with registration');
+            }
+
+            // Check and clean up any orphaned records in users table
+            const { data: existingUser } = await this.adminClient
+                .from('users')
+                .select('*')
+                .eq('email', email)
+                .single();
+
+            if (existingUser) {
+                console.log('Cleaning up orphaned user record:', email);
+                await this.adminClient
+                    .from('users')
+                    .delete()
+                    .eq('email', email);
+            }
+
+            // Create the user in auth
             const { data: authData, error: signUpError } = await this.client.auth.signUp({
                 email,
                 password,
                 options: {
                     emailRedirectTo: `${config.clientUrl}/auth/callback`,
                     data: {
-                        email_confirmed: false
+                        name: name
                     }
                 }
             });
@@ -155,13 +190,16 @@ class SupabaseService {
                 return { data: null, error: new Error('No user data returned from signup') };
             }
 
-            // Then create the user record in public.users
+            // Create the user record in public.users
             const { data: userData, error: createUserError } = await this.adminClient
                 .from('users')
                 .insert([{
                     id: authData.user.id,
                     email: authData.user.email,
-                    password: hashedPassword
+                    name: name,
+                    password: await bcrypt.hash(password, 10),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 }])
                 .select()
                 .single();
@@ -195,35 +233,32 @@ class SupabaseService {
     async signIn(email, password) {
         console.log('Attempting to sign in user:', email);
         try {
-            // First get the user's hashed password
-            const { data: users, error: userError } = await this.adminClient
+            // First check if user exists in users table
+            const { data: userData, error: userError } = await this.adminClient
                 .from('users')
                 .select('*')
-                .eq('email', email);
+                .eq('email', email)
+                .single();
 
-            if (userError) {
-                console.error('Error fetching user:', userError);
-                return { data: null, error: userError };
+            if (userError || !userData) {
+                console.error('User not found:', userError);
+                return { 
+                    data: null, 
+                    error: new Error('Invalid email or password') 
+                };
             }
 
-            if (!users || users.length === 0) {
-                return { data: null, error: new Error('User not found') };
+            // Verify password using bcrypt
+            const isPasswordValid = await bcrypt.compare(password, userData.password);
+            if (!isPasswordValid) {
+                console.error('Invalid password');
+                return { 
+                    data: null, 
+                    error: new Error('Invalid email or password') 
+                };
             }
 
-            if (users.length > 1) {
-                console.error('Multiple users found with same email:', email);
-                return { data: null, error: new Error('Multiple users found') };
-            }
-
-            const userData = users[0];
-
-            // Verify the password
-            const isValidPassword = await bcrypt.compare(password, userData.password);
-            if (!isValidPassword) {
-                return { data: null, error: new Error('Invalid password') };
-            }
-
-            // If password is valid, sign in with Supabase Auth
+            // Try to sign in with Supabase Auth
             const { data, error } = await this.client.auth.signInWithPassword({
                 email,
                 password
@@ -231,29 +266,27 @@ class SupabaseService {
 
             if (error) {
                 console.error('Sign in error:', error);
-                return { data: null, error };
+                
+                if (error.message.includes('Email not confirmed')) {
+                    return { 
+                        data: null, 
+                        error: new Error('Please confirm your email before logging in') 
+                    };
+                }
+                return { 
+                    data: null, 
+                    error: new Error('Invalid email or password') 
+                };
             }
 
             if (!data || !data.user) {
                 return { data: null, error: new Error('No user data returned from sign in') };
             }
 
-            // Get the updated user profile
-            const { data: updatedUser, error: profileError } = await this.adminClient
-                .from('users')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
-
-            if (profileError) {
-                console.error('Error fetching user profile:', profileError);
-                return { data: null, error: profileError };
-            }
-
-            console.log('Sign in successful:', { user: updatedUser, session: data.session });
+            console.log('Sign in successful:', { user: userData, session: data.session });
             return { 
                 data: { 
-                    user: updatedUser,
+                    user: userData,
                     session: data.session 
                 }, 
                 error: null 
