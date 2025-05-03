@@ -60,57 +60,84 @@ class DeviceService {
     }
 
     async getDevices(userId, options = {}) {
-        console.log('Getting devices for user:', userId);
+        console.log('Getting devices with options:', options);
         try {
             let query = supabaseService.adminClient
                 .from('devices')
-                .select('id, name, type, status, min_threshold_value, max_threshold_value, created_at, updated_at')
-                .eq('user_id', userId);
+                .select('*', { count: 'exact' });
 
-            // Apply filters
+            // Apply type filter
             if (options.type) {
+                console.log('Applying type filter:', options.type);
                 query = query.eq('type', options.type);
             }
+
+            // Apply status filter
             if (options.status) {
+                console.log('Applying status filter:', options.status);
                 query = query.eq('status', options.status);
             }
 
             // Apply search
             if (options.search) {
-                query = query.or(`name.ilike.%${options.search}%,device_id.ilike.%${options.search}%`);
+                console.log('Applying search:', options.search);
+                query = query.or(`name.ilike.%${options.search}%`);
             }
 
             // Apply sorting
             if (options.sortBy) {
                 const [field, direction] = options.sortBy.split(':');
-                query = query.order(field, { ascending: direction === 'asc' });
+                const validFields = ['name', 'type', 'status', 'created_at', 'updated_at'];
+                if (validFields.includes(field)) {
+                    console.log('Applying sort:', field, direction);
+                    query = query.order(field, { ascending: direction === 'asc' });
+                }
             } else {
+                // Default sorting by created_at desc
                 query = query.order('created_at', { ascending: false });
             }
 
             // Apply pagination
-            if (options.page && options.limit) {
-                const from = (options.page - 1) * options.limit;
-                const to = from + options.limit - 1;
-                query = query.range(from, to);
-            }
+            const page = parseInt(options.page) || 1;
+            const limit = parseInt(options.limit) || 10;
+            const from = (page - 1) * limit;
+            const to = from + limit - 1;
+            console.log('Applying pagination:', { page, limit, from, to });
+            query = query.range(from, to);
 
             const { data, error, count } = await query;
 
             if (error) {
                 console.error('Error fetching devices:', error);
-                return { data: null, error };
+                return { data: null, count: 0, error };
             }
 
-            console.log('Devices fetched successfully:', data);
+            // Format the response
+            const formattedData = data.map(device => ({
+                id: device.id,
+                name: device.name,
+                type: device.type,
+                status: device.status,
+                userId: device.user_id,
+                thresholds: {
+                    min: device.min_threshold_value,
+                    max: device.max_threshold_value
+                },
+                timestamps: {
+                    created: device.created_at,
+                    updated: device.updated_at
+                }
+            }));
+
+            console.log(`Fetched ${formattedData.length} devices successfully`);
             return { 
-                data, 
-                count: count || data.length,
+                data: formattedData, 
+                count: count || 0,
                 error: null 
             };
         } catch (error) {
             console.error('Get devices error:', error);
-            return { data: null, error };
+            return { data: null, count: 0, error };
         }
     }
 
@@ -119,13 +146,15 @@ class DeviceService {
         try {
             const { data, error } = await supabaseService.adminClient
                 .from('devices')
-                .select('id, name, type, status, min_threshold_value, max_threshold_value, created_at, updated_at')
+                .select('*')
                 .eq('id', deviceId)
-                .eq('user_id', userId)
                 .single();
 
             if (error) {
                 console.error('Error fetching device:', error);
+                if (error.code === 'PGRST116') {
+                    return { data: null, error: new Error('Device not found') };
+                }
                 return { data: null, error };
             }
 
@@ -133,8 +162,25 @@ class DeviceService {
                 return { data: null, error: new Error('Device not found') };
             }
 
-            console.log('Device fetched successfully:', data);
-            return { data, error: null };
+            // Format the response
+            const formattedData = {
+                id: data.id,
+                name: data.name,
+                type: data.type,
+                status: data.status,
+                userId: data.user_id,
+                thresholds: {
+                    min: data.min_threshold_value,
+                    max: data.max_threshold_value
+                },
+                timestamps: {
+                    created: data.created_at,
+                    updated: data.updated_at
+                }
+            };
+
+            console.log('Device fetched successfully:', formattedData);
+            return { data: formattedData, error: null };
         } catch (error) {
             console.error('Get device error:', error);
             return { data: null, error };
@@ -150,6 +196,22 @@ class DeviceService {
                 return { data: null, error: new Error(validationErrors.join(', ')) };
             }
 
+            // First check if device exists
+            const { data: existingDevice, error: checkError } = await supabaseService.adminClient
+                .from('devices')
+                .select('*')
+                .eq('id', deviceId)
+                .single();
+
+            if (checkError) {
+                console.error('Error checking device:', checkError);
+                if (checkError.code === 'PGRST116') {
+                    return { data: null, error: new Error('Device not found') };
+                }
+                return { data: null, error: checkError };
+            }
+
+            // Update the device
             const { data, error } = await supabaseService.adminClient
                 .from('devices')
                 .update({
@@ -157,8 +219,7 @@ class DeviceService {
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', deviceId)
-                .eq('user_id', userId)
-                .select('id, name, type, status, min_threshold_value, max_threshold_value, created_at, updated_at')
+                .select('*')
                 .single();
 
             if (error) {
@@ -166,12 +227,25 @@ class DeviceService {
                 return { data: null, error };
             }
 
-            if (!data) {
-                return { data: null, error: new Error('Device not found') };
-            }
+            // Format the response
+            const formattedData = {
+                id: data.id,
+                name: data.name,
+                type: data.type,
+                status: data.status,
+                userId: data.user_id,
+                thresholds: {
+                    min: data.min_threshold_value,
+                    max: data.max_threshold_value
+                },
+                timestamps: {
+                    created: data.created_at,
+                    updated: data.updated_at
+                }
+            };
 
-            console.log('Device updated successfully:', data);
-            return { data, error: null };
+            console.log('Device updated successfully:', formattedData);
+            return { data: formattedData, error: null };
         } catch (error) {
             console.error('Update device error:', error);
             return { data: null, error };
@@ -181,11 +255,26 @@ class DeviceService {
     async deleteDevice(userId, deviceId) {
         console.log('Deleting device:', deviceId);
         try {
+            // First check if device exists
+            const { data: existingDevice, error: checkError } = await supabaseService.adminClient
+                .from('devices')
+                .select('*')
+                .eq('id', deviceId)
+                .single();
+
+            if (checkError) {
+                console.error('Error checking device:', checkError);
+                if (checkError.code === 'PGRST116') {
+                    return { error: new Error('Device not found') };
+                }
+                return { error: checkError };
+            }
+
+            // Delete the device
             const { error } = await supabaseService.adminClient
                 .from('devices')
                 .delete()
-                .eq('id', deviceId)
-                .eq('user_id', userId);
+                .eq('id', deviceId);
 
             if (error) {
                 console.error('Error deleting device:', error);
@@ -197,6 +286,51 @@ class DeviceService {
         } catch (error) {
             console.error('Delete device error:', error);
             return { error };
+        }
+    }
+
+    async getAllDevices(userId) {
+        console.log('Getting all devices');
+        try {
+            // Get all devices without any user filtering
+            const { data, error } = await supabaseService.adminClient
+                .from('devices')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching all devices:', error);
+                return { data: null, error };
+            }
+
+            console.log('All devices in database:', data);
+
+            if (!data || data.length === 0) {
+                return { data: [], error: null };
+            }
+
+            // Format the response
+            const formattedData = data.map(device => ({
+                id: device.id,
+                name: device.name,
+                type: device.type,
+                status: device.status,
+                userId: device.user_id,  // Include user_id in response
+                thresholds: {
+                    min: device.min_threshold_value,
+                    max: device.max_threshold_value
+                },
+                timestamps: {
+                    created: device.created_at,
+                    updated: device.updated_at
+                }
+            }));
+
+            console.log(`Fetched ${formattedData.length} devices successfully`);
+            return { data: formattedData, error: null };
+        } catch (error) {
+            console.error('Get all devices error:', error);
+            return { data: null, error };
         }
     }
 }

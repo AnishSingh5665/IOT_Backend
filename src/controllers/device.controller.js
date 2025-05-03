@@ -34,6 +34,25 @@ class DeviceController {
     async getDevices(req, res) {
         try {
             const userId = req.user.id;
+            
+            // If no query parameters are present, return all devices without pagination
+            if (Object.keys(req.query).length === 0) {
+                const { data, error } = await deviceService.getAllDevices(userId);
+                
+                if (error) {
+                    return res.status(400).json({
+                        success: false,
+                        message: error.message
+                    });
+                }
+
+                return res.json({
+                    success: true,
+                    data: data
+                });
+            }
+
+            // If query parameters are present, use the filtered/paginated version
             const options = {
                 type: req.query.type,
                 status: req.query.status,
@@ -54,12 +73,20 @@ class DeviceController {
 
             res.json({
                 success: true,
-                data,
-                pagination: {
-                    total: count,
-                    page: options.page,
-                    limit: options.limit,
-                    totalPages: Math.ceil(count / options.limit)
+                data: {
+                    devices: data,
+                    pagination: {
+                        total: count,
+                        page: options.page,
+                        limit: options.limit,
+                        totalPages: Math.ceil(count / options.limit)
+                    },
+                    filters: {
+                        type: options.type,
+                        status: options.status,
+                        search: options.search,
+                        sortBy: options.sortBy
+                    }
                 }
             });
         } catch (error) {
