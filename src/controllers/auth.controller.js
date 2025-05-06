@@ -74,9 +74,15 @@ exports.signup = async (req, res) => {
             throw error;
         }
 
+        // Check if it's admin user to customize the response message
+        const isAdmin = email === 'admin@gmail.com';
+        const message = isAdmin 
+            ? 'Admin user registered successfully.'
+            : 'User registered successfully. Please check your email for confirmation.';
+
         res.status(201).json({
             success: true,
-            message: 'User registered successfully. Please check your email for confirmation.',
+            message: message,
             data: {
                 user: data.user
             }
@@ -112,12 +118,6 @@ exports.login = async (req, res) => {
                 return res.status(401).json({
                     success: false,
                     message: 'Invalid email or password'
-                });
-            }
-            if (error.message.includes('Please confirm your email before logging in')) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Please confirm your email before logging in'
                 });
             }
             throw error;
