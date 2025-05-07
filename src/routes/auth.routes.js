@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
-const authMiddleware = require('../middleware/auth.middleware');
+const { verifyToken, preventAdminModification, requireAdmin } = require('../middleware/auth.middleware');
 const supabaseService = require('../services/supabase.service');
 
 // Test Supabase connection
@@ -31,11 +31,16 @@ router.get('/test-connection', async (req, res) => {
 // Public routes
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
-router.post('/logout', authMiddleware.verifyToken, authController.logout);
+router.post('/logout', verifyToken, authController.logout);
 
 // Protected routes
-router.get('/profile', authMiddleware.verifyToken, authController.getProfile);
-router.put('/edit', authMiddleware.verifyToken, authController.editUser);
-router.delete('/delete', authMiddleware.verifyToken, authController.deleteUser);
+router.get('/profile', verifyToken, authController.getProfile);
+router.put('/edit', verifyToken, preventAdminModification, authController.editUser);
+router.delete('/delete', verifyToken, preventAdminModification, authController.deleteUser);
+
+// Admin routes
+router.get('/admin/users', verifyToken, requireAdmin, authController.getAllUsers);
+router.delete('/admin/users/:userId', verifyToken, requireAdmin, authController.adminDeleteUser);
+router.put('/admin/users/:userId', verifyToken, requireAdmin, authController.adminEditUser);
 
 module.exports = router; 

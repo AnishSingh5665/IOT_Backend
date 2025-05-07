@@ -148,6 +148,17 @@ class SupabaseService {
         }
     }
 
+    // Helper method to hash password
+    async hashPassword(password) {
+        const salt = await bcrypt.genSalt(10);
+        return bcrypt.hash(password, salt);
+    }
+
+    // Helper method to verify password
+    async verifyPassword(plainPassword, hashedPassword) {
+        return bcrypt.compare(plainPassword, hashedPassword);
+    }
+
     // Sign up user
     async signUp(email, password, name) {
         console.log('Attempting to sign up user:', email);
@@ -233,6 +244,9 @@ class SupabaseService {
                 return { data: null, error: new Error('No user data returned from signup') };
             }
 
+            // Hash the password before storing
+            const hashedPassword = await this.hashPassword(password);
+
             // Create the user record in public.users
             const { data: userData, error: createUserError } = await this.adminClient
                 .from('users')
@@ -240,7 +254,7 @@ class SupabaseService {
                     id: authData.user.id,
                     email: authData.user.email,
                     name: name,
-                    password: password, // Store plain password for Supabase auth
+                    password: hashedPassword, // Store hashed password
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }])
@@ -295,8 +309,9 @@ class SupabaseService {
                     };
                 }
 
-                // For admin, verify password directly
-                if (userData.password !== password) {
+                // For admin, verify hashed password
+                const isValidPassword = await this.verifyPassword(password, userData.password);
+                if (!isValidPassword) {
                     console.error('Invalid admin password');
                     return { 
                         data: null, 
@@ -304,8 +319,8 @@ class SupabaseService {
                     };
                 }
 
-                // Create a custom JWT token for admin
-                const token = jwt.sign(
+                // Create different tokens for admin
+                const accessToken = jwt.sign(
                     {
                         id: userData.id,
                         email: userData.email,
@@ -313,13 +328,25 @@ class SupabaseService {
                         is_admin: true
                     },
                     config.jwtSecret,
-                    { expiresIn: '24h' }
+                    { expiresIn: '15m' } // Access token expires in 15 minutes
+                );
+
+                const refreshToken = jwt.sign(
+                    {
+                        id: userData.id,
+                        email: userData.email,
+                        role: 'admin',
+                        is_admin: true,
+                        type: 'refresh'
+                    },
+                    config.jwtSecret,
+                    { expiresIn: '7d' } // Refresh token expires in 7 days
                 );
 
                 // Create a custom session for admin
                 const session = {
-                    access_token: token,
-                    refresh_token: token,
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
                     user: {
                         id: userData.id,
                         email: userData.email,

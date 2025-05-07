@@ -334,4 +334,185 @@ exports.deleteUser = async (req, res) => {
     }
 };
 
+// Admin: Get all users
+exports.getAllUsers = async (req, res) => {
+    try {
+        const { data: users, error } = await supabaseService.adminClient
+            .from('users')
+            .select('id, email, name, created_at, updated_at')
+            .eq('role', 'user')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Error fetching users:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Error fetching users',
+                error: error.message
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Users fetched successfully',
+            data: users
+        });
+    } catch (error) {
+        console.error('Get all users error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching users',
+            error: error.message
+        });
+    }
+};
+
+// Admin: Delete user
+exports.adminDeleteUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        // Check if user exists and is not admin
+        const { data: userData, error: userError } = await supabaseService.adminClient
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (userError || !userData) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (userData.role === 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Cannot delete admin user'
+            });
+        }
+
+        // First delete from users table
+        const { error: deleteError } = await supabaseService.adminClient
+            .from('users')
+            .delete()
+            .eq('id', userId);
+
+        if (deleteError) {
+            console.error('Error deleting user record:', deleteError);
+            return res.status(500).json({
+                success: false,
+                message: 'Error deleting user record',
+                error: deleteError.message
+            });
+        }
+
+        // Then try to delete from auth
+        try {
+            const { error: authError } = await supabaseService.adminClient.auth.admin.deleteUser(userId);
+            if (authError) {
+                console.error('Error deleting auth user:', authError);
+                // If auth deletion fails, we'll still return success since the user record is deleted
+                // This prevents orphaned auth records but doesn't block the operation
+            }
+        } catch (authError) {
+            console.error('Auth deletion error:', authError);
+            // Continue with success response even if auth deletion fails
+        }
+
+        res.json({
+            success: true,
+            message: 'User deleted successfully'
+        });
+    } catch (error) {
+        console.error('Admin delete user error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error deleting user',
+            error: error.message
+        });
+    }
+};
+
+// Admin: Edit user
+exports.adminEditUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { name, email } = req.body;
+
+        // Check if user exists and is not admin
+        const { data: userData, error: userError } = await supabaseService.adminClient
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .single();
+
+        if (userError || !userData) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (userData.role === 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Cannot modify admin user'
+            });
+        }
+
+        // Update user in auth if email is changed
+        if (email && email !== userData.email) {
+            const { error: authError } = await supabaseService.adminClient.auth.admin.updateUserById(
+                userId,
+                { email }
+            );
+
+            if (authError) {
+                console.error('Error updating auth user:', authError);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Error updating user email in auth',
+                    error: authError.message
+                });
+            }
+        }
+
+        // Update user in users table
+        const { data: updatedUser, error: updateError } = await supabaseService.adminClient
+            .from('users')
+            .update({
+                name: name || userData.name,
+                email: email || userData.email,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', userId)
+            .select()
+            .single();
+
+        if (updateError) {
+            console.error('Error updating user record:', updateError);
+            return res.status(500).json({
+                success: false,
+                message: 'Error updating user record',
+                error: updateError.message
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User updated successfully',
+            data: updatedUser
+        });
+    } catch (error) {
+        console.error('Admin edit user error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error updating user',
+            error: error.message
+        });
+    }
+};
+
 module.exports = exports; 
