@@ -18,14 +18,14 @@ class MQTTService {
             this.client = mqtt.connect(config.mqtt.brokerUrl, config.mqtt.options);
 
             this.client.on('connect', () => {
-                console.log('✅ MQTT Connected to broker');
+                console.log('MQTT Connected to broker');
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
                 this.subscribeToTopics();
             });
 
             this.client.on('error', (error) => {
-                console.error('❌ MQTT Error:', error.message);
+                console.error('MQTT Error:', error.message);
                 this.handleReconnect();
             });
 
@@ -119,6 +119,30 @@ class MQTTService {
             // Save data to MongoDB
             await deviceData.save();
             console.log('Data saved to MongoDB');
+
+            // Define global sensor topics that aggregate data from all devices
+            const globalSensorTopics = {
+                temperature: 'iot/sensors/temperature',
+                voltage: 'iot/sensors/voltage',
+                vibration: 'iot/sensors/vibration',
+                singalPCurrent: 'iot/sensors/singalPCurrent',
+                AphaseCurrent: 'iot/sensors/AphaseCurrent',
+                BphaseCurrent: 'iot/sensors/BphaseCurrent',
+                CphaseCurrent: 'iot/sensors/CphaseCurrent'
+            };
+
+            // Publish each sensor's data to its respective global topic
+            for (const [sensor, sensorTopic] of Object.entries(globalSensorTopics)) {
+                if (data[sensor] !== undefined) {
+                    const sensorData = {
+                        deviceId,
+                        timestamp: data.time,
+                        value: data[sensor],
+                        sensorType: sensor
+                    };
+                    this.publish(sensorTopic, sensorData);
+                }
+            }
 
             // Send acknowledgment to device
             const ackTopic = `iot/devices/${deviceId}/ack`;
