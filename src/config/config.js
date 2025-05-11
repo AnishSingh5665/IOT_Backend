@@ -10,7 +10,7 @@ module.exports = {
     port: process.env.PORT || 5000,
     nodeEnv: process.env.NODE_ENV || 'development',
     clientUrl: process.env.NODE_ENV === 'production' 
-        ? process.env.CLIENT_URL || 'https://your-production-frontend-url.com'
+        ? process.env.CLIENT_URL || 'https://iot-frontend.onrender.com'
         : process.env.CLIENT_URL || 'http://localhost:3000',
 
     // MongoDB Configuration

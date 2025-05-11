@@ -240,6 +240,18 @@ class SupabaseService {
                 return { data: null, error: signUpError };
             }
 
+            // If email verification is successful, update user's email_confirmed status
+            if (authData?.user?.email_confirmed_at) {
+                try {
+                    await this.adminClient
+                        .from('users')
+                        .update({ email_confirmed: true })
+                        .eq('id', authData.user.id);
+                } catch (updateError) {
+                    console.error('Error updating email confirmation status:', updateError);
+                }
+            }
+
             if (!authData || !authData.user) {
                 return { data: null, error: new Error('No user data returned from signup') };
             }
@@ -498,6 +510,43 @@ class SupabaseService {
         } catch (error) {
             console.error('Get user by session error:', error);
             throw error;
+        }
+    }
+
+    // Handle email verification
+    async handleEmailVerification(token) {
+        try {
+            const { data, error } = await this.client.auth.verifyOtp({
+                token_hash: token,
+                type: 'email'
+            });
+
+            if (error) {
+                console.error('Email verification error:', error);
+                return { success: false, error };
+            }
+
+            if (data?.user) {
+                // Update user's email_confirmed status in the database
+                await this.adminClient
+                    .from('users')
+                    .update({ email_confirmed: true })
+                    .eq('id', data.user.id);
+
+                return { 
+                    success: true, 
+                    message: 'Email verified successfully',
+                    user: data.user
+                };
+            }
+
+            return { 
+                success: false, 
+                error: new Error('Verification failed') 
+            };
+        } catch (error) {
+            console.error('Email verification error:', error);
+            return { success: false, error };
         }
     }
 }

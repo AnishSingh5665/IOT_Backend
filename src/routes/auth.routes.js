@@ -3,6 +3,7 @@ const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const { verifyToken, preventAdminModification, requireAdmin } = require('../middleware/auth.middleware');
 const supabaseService = require('../services/supabase.service');
+const config = require('../config/config');
 
 // Test Supabase connection
 router.get('/test-connection', async (req, res) => {
@@ -32,6 +33,37 @@ router.get('/test-connection', async (req, res) => {
 router.post('/signup', authController.signup);
 router.post('/login', authController.login);
 router.post('/logout', verifyToken, authController.logout);
+
+// Email verification callback route
+router.get('/auth/callback', async (req, res) => {
+    try {
+        const { token_hash, type, error, error_description } = req.query;
+
+        if (error) {
+            console.error('Verification error:', error, error_description);
+            // Redirect to frontend with error
+            return res.redirect(`${config.clientUrl}/auth/verification-error?error=${error}&description=${error_description}`);
+        }
+
+        if (!token_hash || type !== 'email') {
+            return res.redirect(`${config.clientUrl}/auth/verification-error?error=invalid_request`);
+        }
+
+        const supabaseService = require('../services/supabase.service');
+        const result = await supabaseService.handleEmailVerification(token_hash);
+
+        if (result.success) {
+            // Redirect to frontend with success
+            return res.redirect(`${config.clientUrl}/auth/verification-success`);
+        } else {
+            // Redirect to frontend with error
+            return res.redirect(`${config.clientUrl}/auth/verification-error?error=verification_failed`);
+        }
+    } catch (error) {
+        console.error('Verification callback error:', error);
+        return res.redirect(`${config.clientUrl}/auth/verification-error?error=server_error`);
+    }
+});
 
 // Protected routes
 router.get('/profile', verifyToken, authController.getProfile);
